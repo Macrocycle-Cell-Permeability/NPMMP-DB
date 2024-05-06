@@ -30,13 +30,13 @@ NPMMP-DB
 - **ChEMBL_Python_Client** : Python code we used for collecting macrocyclic molecular permeability data from ChEMBL. [(Davies et al., 2015)](https://academic.oup.com/nar/article/43/W1/W612/2467881)
 
   
-- **Molecular_Processing**: We standardised the SMILES and gave an unique ID to each individual molecule. Then macrocycle, amide bond and serveral molecular feataures were calulated. We also create png images (saved in `/Data/img`) and sdf files(saved in `/Data/sdf`) for each molecules. Finally the overall data was saved in a csv file (saved in `/Data/csv`).
+- **Molecular_Processing**: We standardised the SMILES and gave an unique ID to each individual molecule from the raw data(`/Data/Raw.csv`). Then macrocycle, amide bond and serveral molecular feataures were calulated. We also create png images (saved in `/Data/img`) and sdf files(saved in `/Data/sdf`) for each molecules. Finally the overall data was saved in a csv file (saved in `/Data/csv`).
   
 - **Split_and_Count**: The overall data were divided into different subsets accroding to their assays and endpoints. The subsets were saved in `/Data/csv`
 
 ### Data
 
-- csv:
-- img
-- sdf
+- csv: Include overall data calculated by `/Code/Molecular_Processing.py` and subsets created by `/Code/Split_and_Count.py`
+- img: png images of each molecules created by `/Code/Molecular_Processing.py`
+- sdf: sdf files of each molecules created by `/Code/Molecular_Processing.py`
 
