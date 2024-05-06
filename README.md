@@ -1,7 +1,8 @@
 # NPMMP-DB
 
-This folder contatins codes and data uesd for NPMMPDB database. 
-The codes were provided in both **Jupyter Notebook(.ipynb)** and **Python Script(.py)**
+This folder contatins codes and data uesd for NPMMPDB database construc. 
+
+The codes were provided in both **Jupyter Notebook(.ipynb)** and **Python Script(.py)**.
 
 ## Content
 ```
