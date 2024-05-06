@@ -23,6 +23,12 @@ NPMMP-DB
 
 ```
 
+## Working Enviroment
+This projected was opreated on 
+- macOS Sonoma (Version 14.4.1)
+- Python (Version 3.7.16)
+- RDKit (Version 2020.09.1)
+
 ## Descriptions
 
 ### Code
@@ -39,4 +45,5 @@ NPMMP-DB
 - csv: Include overall data calculated by `/Code/Molecular_Processing.py` and subsets created by `/Code/Split_and_Count.py`
 - img: png images of each molecules created by `/Code/Molecular_Processing.py`
 - sdf: sdf files of each molecules created by `/Code/Molecular_Processing.py`
+
 
