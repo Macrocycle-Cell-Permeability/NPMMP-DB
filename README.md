@@ -1,7 +1,7 @@
 # NPMMP-DB
 
 ```
-.
+NPMMP-DB
 ├── Code
 │   ├── ChEMBL_Python_Client.ipynb
 │   ├── ChEMBL_Python_Client.py
@@ -14,5 +14,4 @@
 │   ├── img
 │   └── sdf
 └── README.md
-
 ´´´
