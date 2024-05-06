@@ -45,7 +45,7 @@ standard_smiles_to_id = {}
 
 def assign_id(standard_smiles):
     if standard_smiles not in standard_smiles_to_id:
-        standard_smiles_to_id[standard_smiles] = 'MC-' + str(len(standard_smiles_to_id) + 4593).zfill(4) #Continue with MC-4592
+        standard_smiles_to_id[standard_smiles] = 'MC-' + str(len(standard_smiles_to_id) + 1).zfill(4) 
     return standard_smiles_to_id[standard_smiles]
 
 # Assuming sample_data is your DataFrame and standard_smiles_to_id is your dictionary
