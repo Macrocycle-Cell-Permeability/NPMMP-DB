@@ -23,7 +23,7 @@ NPMMP-DB
 
 ```
 
-## Working Enviroment
+## Working Environment
 This projected was opreated on 
 - macOS Sonoma (Version 14.4.1)
 - Python (Version 3.7.16)
