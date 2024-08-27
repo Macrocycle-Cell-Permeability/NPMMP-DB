@@ -19,7 +19,7 @@ from PIL import Image
 import os
 rdDepictor.SetPreferCoordGen(True)
 
-sample_data = pd.read_csv('Raw.csv',encoding='utf_8_sig')
+sample_data = pd.read_csv('Data_2023July_2024August.csv',encoding='utf_8_sig')
 
 def standardise(smiles):
     std_smiles = standardize_smiles(smiles)
@@ -34,11 +34,15 @@ standard_smiles_to_id = {}
 
 def assign_id(standard_smiles):
     if standard_smiles not in standard_smiles_to_id:
-        standard_smiles_to_id[standard_smiles] = 'MC-' + str(len(standard_smiles_to_id) +1).zfill(4)
+        standard_smiles_to_id[standard_smiles] = 'MC-' + str(len(standard_smiles_to_id) +4592).zfill(4)
     return standard_smiles_to_id[standard_smiles]
 
 # Assuming sample_data is your DataFrame and standard_smiles_to_id is your dictionary
 sample_data['ID'] = sample_data['Standardise_SMILES'].apply(assign_id)
+smiles_list = sample_data["Standardise_SMILES"].tolist()
+
+# convert SMILES to RDKit molecule objects
+
 
 
 # Move the ID col to the first row
@@ -47,6 +51,10 @@ cols = [cols[-1]] + cols[:-1]  ## WARNING: DO NOT RUN THIS PART OF CODE MORE THA
 sample_data = sample_data[cols]
 smiles_list = sample_data['Standardise_SMILES']
 mols = [Chem.MolFromSmiles(smi) for smi in smiles_list]
+def count_aromatic_rings(mol):
+    aromatic_rings = [ring for ring in mol.GetRingInfo().AtomRings() if all(mol.GetAtomWithIdx(idx).GetIsAromatic() for idx in ring)]
+    return len(aromatic_rings)
+sample_data['Num_Aromatic_Rings'] = [count_aromatic_rings(mol) for mol in mols]
 
 def _get_macrocycle_ring_mol(mol, strip=False):
     Chem.RemoveStereochemistry(mol)
@@ -172,14 +180,6 @@ class process:
             num_rings.append(num_ring)
         return num_rings
 
-    def get_num_of_aromatic_rings(self):
-        num_aromatic_rings = []
-        for mol in tqdm(self.mols):
-            num_aromatic_ring = len([ring for ring in mol.GetRingInfo().AtomRings()
-                                if all(mol.GetAtomWithIdx(idx).GetIsAromatic() for idx in ring)])
-            num_aromatic_rings.append(num_aromatic_ring)
-        return num_aromatic_rings
-
     def get_cLogP(self):
         cLogP = []
         for mol in tqdm(self.mols):
@@ -295,7 +295,7 @@ class process:
         Macrocycle_free_amide_ratios = self.get_macrocycle_free_amide_ratio()
         Macrocycle_amide_ratios = self.get_macrocycle_amide_ratio()
         Num_Rings = self.get_num_of_rings()
-        Num_Aromatic_Rings = self.get_num_of_aromatic_rings()
+        #Num_Aromatic_Rings = self.get_num_of_aromatic_rings()
         cLogP = self.get_cLogP()
         Molecular_Weight = self.get_molecular_weight()
         Num_H_Acceptors = self.get_Num_H_Acceptors()
@@ -322,7 +322,7 @@ class process:
             "Macrocycle_free_amide_ratios":Macrocycle_free_amide_ratios,
             "Macrocycle_amide_ratios":Macrocycle_amide_ratios,
             "Num_Rings":Num_Rings,
-            "Num_Aromatic_Rings":Num_Aromatic_Rings,
+            #"Num_Aromatic_Rings":Num_Aromatic_Rings,
             "cLogP":cLogP,
             "Molecular_Weight":Molecular_Weight,
             "Num_H_Acceptors":Num_H_Acceptors,
@@ -340,9 +340,8 @@ class process:
 
 rdkit_featurizer = process(smiles_list)
 rdkit_features = rdkit_featurizer.result()
-#rdkit_features.to_csv('testresult.csv')
 result_df = pd.concat([sample_data, rdkit_features], axis =1)
-result_df.to_csv("Result.csv",encoding='utf_8_sig')
+result_df.to_csv("Data_2023July_2024August_Result.csv",encoding='utf_8_sig')
 
 """ # Define directory name
 dir_name = '/Desktop/Overall_images'
