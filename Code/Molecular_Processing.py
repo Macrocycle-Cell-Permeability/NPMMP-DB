@@ -19,7 +19,7 @@ from PIL import Image
 import os
 rdDepictor.SetPreferCoordGen(True)
 
-sample_data = pd.read_csv('Data_2023July_2024August.csv',encoding='utf_8_sig')
+sample_data = pd.read_csv('Rapamycin.csv',encoding='utf_8_sig')
 
 def standardise(smiles):
     std_smiles = standardize_smiles(smiles)
@@ -34,7 +34,7 @@ standard_smiles_to_id = {}
 
 def assign_id(standard_smiles):
     if standard_smiles not in standard_smiles_to_id:
-        standard_smiles_to_id[standard_smiles] = 'MC-' + str(len(standard_smiles_to_id) +4592).zfill(4)
+        standard_smiles_to_id[standard_smiles] = 'MC-' + str(len(standard_smiles_to_id) +1).zfill(4)
     return standard_smiles_to_id[standard_smiles]
 
 # Assuming sample_data is your DataFrame and standard_smiles_to_id is your dictionary
@@ -51,10 +51,7 @@ cols = [cols[-1]] + cols[:-1]  ## WARNING: DO NOT RUN THIS PART OF CODE MORE THA
 sample_data = sample_data[cols]
 smiles_list = sample_data['Standardise_SMILES']
 mols = [Chem.MolFromSmiles(smi) for smi in smiles_list]
-def count_aromatic_rings(mol):
-    aromatic_rings = [ring for ring in mol.GetRingInfo().AtomRings() if all(mol.GetAtomWithIdx(idx).GetIsAromatic() for idx in ring)]
-    return len(aromatic_rings)
-sample_data['Num_Aromatic_Rings'] = [count_aromatic_rings(mol) for mol in mols]
+
 
 def _get_macrocycle_ring_mol(mol, strip=False):
     Chem.RemoveStereochemistry(mol)
@@ -91,7 +88,6 @@ class process:
         macrocycle_mol = _get_macrocycle_ring_mol(mol, strip=True)
         ring_size = macrocycle_mol.GetNumBonds()
         return ring_size
-
 
     def get_free_amide_count(self):
         free_amide_counts = []
@@ -145,12 +141,122 @@ class process:
         return core_smiles
 
     def get_macrocycle_peripheral_smiles(self):
-        peripheral_smiles = []
+        peripheral_smiles_list = []
         for mol in tqdm(self.mols):
-            macrocycle_mol = _get_macrocycle_ring_mol(mol, strip=False)
-            macrocycle_peripheral_smiles = Chem.MolToSmiles(macrocycle_mol)
-            peripheral_smiles.append(macrocycle_peripheral_smiles)
-        return peripheral_smiles
+            # 获取大环的原子
+            ri = mol.GetRingInfo()
+            atoms_ring = set(max(ri.AtomRings(), key=len))
+            
+            # 获取连接到大环的单重原子基团（包括可能通过多点连接的环状结构如环氧、环丙烷、氮杂环丙烷）
+            peripheral_atoms = set()
+            peripheral_groups = []
+            
+            # 找出所有直接连接到大环的原子
+            for ring_atom_idx in atoms_ring:
+                ring_atom = mol.GetAtomWithIdx(ring_atom_idx)
+                for neighbor in ring_atom.GetNeighbors():
+                    neighbor_idx = neighbor.GetIdx()
+                    if neighbor_idx not in atoms_ring and neighbor.GetSymbol() != 'H':
+                        # 检查是否是单原子基团或小环结构（如环氧、环丙烷、氮杂环丙烷）
+                        if neighbor.IsInRing():  # 如果是环的一部分
+                            # 获取包含这个原子的最小环
+                            for ring in ri.AtomRings():
+                                if neighbor_idx in ring:
+                                    # 检查这个环是否足够小（例如3个原子的环）且与大环有多个连接点
+                                    if len(ring) <= 3:  # 环氧、环丙烷或氮杂环丙烷大小
+                                        # 检查这个小环是否有多个连接点连到大环
+                                        connection_points = sum(1 for atom_idx in ring if any(
+                                            neigh.GetIdx() in atoms_ring for neigh in mol.GetAtomWithIdx(atom_idx).GetNeighbors()))
+                                        if connection_points >= 1:
+                                            peripheral_atoms.update(ring)
+                        else:  # 不是环的一部分，是单原子基团
+                            peripheral_atoms.add(neighbor_idx)
+            
+            # 如果找到了外围基团，提取它们的SMILES
+            if peripheral_atoms:
+                atoms_to_use = list(peripheral_atoms.union(atoms_ring))
+                try:
+                    peripheral_smiles = AllChem.MolFragmentToSmiles(mol, atomsToUse=atoms_to_use)
+                    peripheral_smiles_list.append(peripheral_smiles)
+                except:
+                    # 处理可能的错误情况
+                    peripheral_smiles_list.append("")
+            else:
+                peripheral_smiles_list.append("")
+                
+        return peripheral_smiles_list
+
+    def get_peripheral_groups_for_mol(self, mol):
+        """
+        为单个分子识别外围基团，返回包含每个外围基团SMILES的列表
+        """
+        # 获取大环的原子
+        ri = mol.GetRingInfo()
+        atoms_ring = set(max(ri.AtomRings(), key=len))
+        
+        # 存储识别到的所有外围基团
+        peripheral_groups = []
+        visited = set()
+        
+        # 找出所有直接连接到大环的原子
+        for ring_atom_idx in atoms_ring:
+            ring_atom = mol.GetAtomWithIdx(ring_atom_idx)
+            for neighbor in ring_atom.GetNeighbors():
+                neighbor_idx = neighbor.GetIdx()
+                
+                # 如果不是大环的一部分且不是氢原子
+                if neighbor_idx not in atoms_ring and neighbor.GetSymbol() != 'H' and neighbor_idx not in visited:
+                    # 检查是否是小环结构（如环氧、环丙烷、氮杂环丙烷）
+                    if neighbor.IsInRing():
+                        for ring in ri.AtomRings():
+                            if neighbor_idx in ring and len(ring) <= 3:  # 小环（≤3个原子）
+                                # 检查这个小环是否有连接点连到大环
+                                connection_points = sum(1 for atom_idx in ring if any(
+                                    neigh.GetIdx() in atoms_ring for neigh in mol.GetAtomWithIdx(atom_idx).GetNeighbors()))
+                                if connection_points >= 1:
+                                    # 提取这个小环作为一个外围基团
+                                    group_atoms = list(ring)
+                                    # 添加连接点
+                                    for atom_idx in ring:
+                                        atom = mol.GetAtomWithIdx(atom_idx)
+                                        for neigh in atom.GetNeighbors():
+                                            if neigh.GetIdx() in atoms_ring:
+                                                group_atoms.append(neigh.GetIdx())
+                                    
+                                    try:
+                                        group_smiles = AllChem.MolFragmentToSmiles(mol, atomsToUse=group_atoms)
+                                        peripheral_groups.append(group_smiles)
+                                        visited.update(ring)
+                                    except:
+                                        pass
+                    else:
+                        # 单原子基团 - 跟踪从这个原子开始的基团
+                        group_atoms = self._trace_group_from_atom(mol, neighbor_idx, atoms_ring)
+                        if len(group_atoms) > 0:
+                            try:
+                                group_smiles = AllChem.MolFragmentToSmiles(mol, atomsToUse=group_atoms)
+                                peripheral_groups.append(group_smiles)
+                                visited.update(group_atoms)
+                            except:
+                                pass
+        
+        return peripheral_groups
+    
+    def _trace_group_from_atom(self, mol, start_atom_idx, ring_atoms, max_depth=1):
+        """
+        从起始原子追踪一个基团，限制为单个重原子（非氢）
+        ring_atoms: 大环原子的集合
+        max_depth: 追踪的最大深度（限制为1表示只包含直接连接的单个重原子）
+        """
+        group_atoms = [start_atom_idx]
+        
+        # 添加与大环的连接点
+        start_atom = mol.GetAtomWithIdx(start_atom_idx)
+        for neigh in start_atom.GetNeighbors():
+            if neigh.GetIdx() in ring_atoms:
+                group_atoms.append(neigh.GetIdx())
+        
+        return group_atoms
 
     def get_macrocycle_free_amide_ratio (self):
         macrocycle_free_amide_ratios = []
@@ -179,6 +285,14 @@ class process:
             num_ring = mol.GetRingInfo().NumRings()
             num_rings.append(num_ring)
         return num_rings
+
+    def get_num_of_aromatic_rings(self):
+        aromatic_rings = []
+        for mol in tqdm(self.mols):
+            aromatic_rings = [ring for ring in mol.GetRingInfo().AtomRings() if all(mol.GetAtomWithIdx(idx).GetIsAromatic() for idx in ring)]
+            num_aromatic_rings = len(aromatic_rings)
+            aromatic_rings.append(num_aromatic_rings)
+        return len(aromatic_rings)
 
     def get_cLogP(self):
         cLogP = []
@@ -221,6 +335,34 @@ class process:
             Num_Carbon_Atoms.append(Num_Carbon_Atom)
         return Num_Carbon_Atoms
 
+    def get_Num_Nitrogen_Atoms(self):
+        Num_Nitrogen_Atoms = []
+        for mol in tqdm(self.mols):
+            Num_Nitrogen_Atom = sum(1 for atom in mol.GetAtoms() if atom.GetSymbol() == 'N')
+            Num_Nitrogen_Atoms.append(Num_Nitrogen_Atom)
+        return Num_Nitrogen_Atoms
+
+    def get_Num_Oxygen_Atoms(self):
+        Num_Oxygen_Atoms = []
+        for mol in tqdm(self.mols):
+            Num_Oxygen_Atom = sum(1 for atom in mol.GetAtoms() if atom.GetSymbol() == 'O')
+            Num_Oxygen_Atoms.append(Num_Oxygen_Atom)
+        return Num_Oxygen_Atoms
+
+    def get_Num_Sulfur_Atoms(self):
+        Num_Sulfur_Atoms = []
+        for mol in tqdm(self.mols):
+            Num_Sulfur_Atom = sum(1 for atom in mol.GetAtoms() if atom.GetSymbol() == 'S')
+            Num_Sulfur_Atoms.append(Num_Sulfur_Atom)
+        return Num_Sulfur_Atoms
+
+    def get_Num_Phosphorus_Atoms(self):
+        Num_Phosphorus_Atoms = []
+        for mol in tqdm(self.mols):
+            Num_Phosphorus_Atom = sum(1 for atom in mol.GetAtoms() if atom.GetSymbol() == 'P')
+            Num_Phosphorus_Atoms.append(Num_Phosphorus_Atom)
+        return Num_Phosphorus_Atoms
+
     def get_fraction_sp3_carbons(self):
         fraction_sp3_carbons = []
         sp3_carbons = 0
@@ -235,7 +377,7 @@ class process:
               fraction_sp3_carbon = 0
             else:
               fraction_sp3_carbon = sp3_carbons / total_carbons
-              
+
             fraction_sp3_carbons.append(fraction_sp3_carbon)
         return fraction_sp3_carbons
 
@@ -245,6 +387,13 @@ class process:
             tpsa = Descriptors.TPSA(mol)
             TPSA.append(tpsa)
         return TPSA
+    
+    def get_TPSA_with_S_and_P(self):
+        TPSA_with_S_and_P = []
+        for mol in tqdm(self.mols):
+            tpsa_with_S_and_P_num = Descriptors.TPSA(mol, includeSandP=True)
+            TPSA_with_S_and_P.append(tpsa_with_S_and_P_num)
+        return TPSA_with_S_and_P
 
     def get_Num_Rotatable_Bonds(self):
         Num_Rotatable_Bonds = []
@@ -273,9 +422,7 @@ class process:
         for mol in tqdm(self.mols):
             kier_index = Descriptors.Kappa1(mol)*Descriptors.Kappa2(mol)/Descriptors.HeavyAtomCount(mol)
             Kier_index.append(kier_index)
-
         return Kier_index
-
 
     def get_InchiKey (self):
         InchiKey = []
@@ -295,15 +442,20 @@ class process:
         Macrocycle_free_amide_ratios = self.get_macrocycle_free_amide_ratio()
         Macrocycle_amide_ratios = self.get_macrocycle_amide_ratio()
         Num_Rings = self.get_num_of_rings()
-        #Num_Aromatic_Rings = self.get_num_of_aromatic_rings()
+        Num_Aromatic_Rings = self.get_num_of_aromatic_rings()
         cLogP = self.get_cLogP()
         Molecular_Weight = self.get_molecular_weight()
         Num_H_Acceptors = self.get_Num_H_Acceptors()
         Num_H_donors = self.get_Num_H_donors()
         Num_Heavy_Atoms = self.get_Num_Heavy_Atoms()
         Num_Carbon_Atoms = self.get_Num_Carbon_Atoms()
+        Num_Nitrogen_Atoms = self.get_Num_Nitrogen_Atoms()
+        Num_Oxygen_Atoms = self.get_Num_Oxygen_Atoms()
+        Num_Sulfur_Atoms = self.get_Num_Sulfur_Atoms()
+        Num_Phosphorus_Atoms = self.get_Num_Phosphorus_Atoms()
         fraction_sp3_carbons = self.get_fraction_sp3_carbons()
         TPSA = self.get_TPSA()
+        TPSA_with_S_and_P = self.get_TPSA_with_S_and_P()
         Num_Rotatable_Bonds = self.get_Num_Rotatable_Bonds()
         Num_Charged_Atoms = self.get_Num_Charged_Atoms()
         Net_Charge = self.get_Net_Charge()
@@ -322,15 +474,20 @@ class process:
             "Macrocycle_free_amide_ratios":Macrocycle_free_amide_ratios,
             "Macrocycle_amide_ratios":Macrocycle_amide_ratios,
             "Num_Rings":Num_Rings,
-            #"Num_Aromatic_Rings":Num_Aromatic_Rings,
+            "Num_Aromatic_Rings":Num_Aromatic_Rings,
             "cLogP":cLogP,
             "Molecular_Weight":Molecular_Weight,
             "Num_H_Acceptors":Num_H_Acceptors,
             "Num_H_donors":Num_H_donors,
             "Num_Heavy_Atoms":Num_Heavy_Atoms,
             "Num_Carbon_Atoms":Num_Carbon_Atoms,
+            "Num_Nitrogen_Atoms": Num_Nitrogen_Atoms,
+            "Num_Oxygen_Atoms": Num_Oxygen_Atoms,
+            "Num_Sulfur_Atoms": Num_Sulfur_Atoms,
+            "Num_Phosphorus_Atoms": Num_Phosphorus_Atoms,
             "Fraction_SP3_Carbons":fraction_sp3_carbons,
             "TPSA":TPSA,
+            "TPSA(withSandP)":TPSA_with_S_and_P,
             "Num_Rotatable_Bonds":Num_Rotatable_Bonds,
             "Num_Charged_Atoms":Num_Charged_Atoms,
             "Net_Charge":Net_Charge,
@@ -341,46 +498,78 @@ class process:
 rdkit_featurizer = process(smiles_list)
 rdkit_features = rdkit_featurizer.result()
 result_df = pd.concat([sample_data, rdkit_features], axis =1)
-result_df.to_csv("Data_2023July_2024August_Result.csv",encoding='utf_8_sig')
+result_df.to_csv("Oral_Result.csv",encoding='utf_8_sig')
 
-""" # Define directory name
-dir_name = '/Desktop/Overall_images'
-
-# Check if the directory exists, if not create it
-if not os.path.exists(dir_name):
-    os.makedirs(dir_name)
-
-# Assuming 'sample_data' is defined
-# Drop duplicates
-sample_data.drop_duplicates(subset='Standardise_SMILES', keep="first", inplace=True)
-
-# Create Images and save in target folder
-for index, row in sample_data.iterrows():
-    molecule = row['Standardise_SMILES']
-    if molecule is not None:
-        drawer = rdMolDraw2D.MolDraw2DCairo(600, 600)
-        drawer.drawOptions().clearBackground = False
-        drawer.drawOptions().addStereoAnnotation = False
-        drawer.DrawMolecule(Chem.MolFromSmiles(molecule))
-        drawer.FinishDrawing()
-        img_data = drawer.GetDrawingText()  # Get image data as bytes
-        file_path = os.path.join(dir_name, f"{row['ID']}.png")
-        with open(file_path, 'wb') as f:
-            f.write(img_data)  # Write the bytes to a file
-    else:
-        print(f"SMILES string at index {index} could not be converted into a molecule.")
-
-dir_name_2 = '/Desktop/Overall_sdf'
-
-# Check if the directory exists, if not create it
-if not os.path.exists(dir_name_2):
-    os.makedirs(dir_name_2)
-
-# Create Images and save in target folder
-for index, row in sample_data.iterrows():
-    molecule = row['Standardise_SMILES']
-    if molecule:
-        mol = Chem.MolFromSmiles(molecule)  # Assuming you need to convert SMILES to a molecule
-        if mol is not None:
-            file_path_2 = os.path.join(dir_name_2, f"{row['ID']}.sdf")
-            Chem.MolToMolFile(mol, file_path_2)  # Save directly to file """
+## Define directory names using os.path.expanduser to get the proper user desktop path
+#desktop_path = os.path.expanduser("~/Desktop")
+#dir_name = os.path.join(desktop_path, "Overall_images")
+#dir_name_2 = os.path.join(desktop_path, "Overall_sdf")
+#
+#def create_directory(path):
+#    """Safely create directory if it doesn't exist"""
+#    try:
+#        if not os.path.exists(path):
+#            os.makedirs(path)
+#        return True
+#    except OSError as e:
+#        print(f"Error creating directory {path}: {e}")
+#        return False
+#
+#def process_molecules(sample_data):
+#    """Process molecules and create images and SDF files"""
+#    # Drop duplicates
+#    sample_data = sample_data.drop_duplicates(subset='Standardise_SMILES', keep="first")
+#    
+#    # Create directories
+#    if not all(create_directory(d) for d in [dir_name, dir_name_2]):
+#        print("Failed to create one or more directories. Exiting.")
+#        return
+#
+#    # Process molecules
+#    for index, row in sample_data.iterrows():
+#        molecule = row['Standardise_SMILES']
+#        mol_id = row['ID']
+#        
+#        if not molecule:
+#            print(f"Empty SMILES string at index {index}")
+#            continue
+#
+#        try:
+#            mol = Chem.MolFromSmiles(molecule)
+#            if mol is None:
+#                print(f"Failed to parse SMILES at index {index}: {molecule}")
+#                continue
+#
+#            # Create and save PNG
+#            try:
+#                drawer = rdMolDraw2D.MolDraw2DCairo(600, 600)
+#                drawer.drawOptions().clearBackground = False
+#                drawer.drawOptions().addStereoAnnotation = False
+#                drawer.DrawMolecule(mol)
+#                drawer.FinishDrawing()
+#                img_data = drawer.GetDrawingText()
+#                
+#                png_path = os.path.join(dir_name, f"{mol_id}.png")
+#                with open(png_path, 'wb') as f:
+#                    f.write(img_data)
+#            except Exception as e:
+#                print(f"Error creating PNG for molecule {mol_id}: {e}")
+#
+#            # Create and save SDF
+#            try:
+#                sdf_path = os.path.join(dir_name_2, f"{mol_id}.sdf")
+#                Chem.MolToMolFile(mol, sdf_path)
+#            except Exception as e:
+#                print(f"Error creating SDF for molecule {mol_id}: {e}")
+#
+#        except Exception as e:
+#            print(f"Error processing molecule at index {index}: {e}")
+#
+## Usage
+#if __name__ == "__main__":
+#    # Assuming sample_data is your pandas DataFrame
+#    try:
+#        process_molecules(sample_data)
+#        print("Processing completed successfully")
+#    except Exception as e:
+#        print(f"An error occurred during processing: {e}")
