@@ -19,7 +19,7 @@ from PIL import Image
 import os
 rdDepictor.SetPreferCoordGen(True)
 
-sample_data = pd.read_csv('Rapamycin.csv',encoding='utf_8_sig')
+sample_data = pd.read_csv('XiaoKongLongZuiKeAi.csv',encoding='utf_8_sig')
 
 def standardise(smiles):
     std_smiles = standardize_smiles(smiles)
@@ -30,28 +30,9 @@ idx = sample_data.columns.get_loc('SMILES') + 1
 # Remove the column and reinsert it to the desired location
 standard_smiles_col = sample_data.pop('Standardise_SMILES')
 sample_data.insert(idx, 'Standardise_SMILES', standard_smiles_col)
-standard_smiles_to_id = {}
 
-def assign_id(standard_smiles):
-    if standard_smiles not in standard_smiles_to_id:
-        standard_smiles_to_id[standard_smiles] = 'MC-' + str(len(standard_smiles_to_id) +1).zfill(4)
-    return standard_smiles_to_id[standard_smiles]
-
-# Assuming sample_data is your DataFrame and standard_smiles_to_id is your dictionary
-sample_data['ID'] = sample_data['Standardise_SMILES'].apply(assign_id)
-smiles_list = sample_data["Standardise_SMILES"].tolist()
-
-# convert SMILES to RDKit molecule objects
-
-
-
-# Move the ID col to the first row
-cols = sample_data.columns.tolist()
-cols = [cols[-1]] + cols[:-1]  ## WARNING: DO NOT RUN THIS PART OF CODE MORE THAN ONCE!!
-sample_data = sample_data[cols]
 smiles_list = sample_data['Standardise_SMILES']
 mols = [Chem.MolFromSmiles(smi) for smi in smiles_list]
-
 
 def _get_macrocycle_ring_mol(mol, strip=False):
     Chem.RemoveStereochemistry(mol)
@@ -498,7 +479,7 @@ class process:
 rdkit_featurizer = process(smiles_list)
 rdkit_features = rdkit_featurizer.result()
 result_df = pd.concat([sample_data, rdkit_features], axis =1)
-result_df.to_csv("Oral_Result.csv",encoding='utf_8_sig')
+result_df.to_csv("XiaoKongLongZuiKeAi-Result.csv",encoding='utf_8_sig')
 
 ## Define directory names using os.path.expanduser to get the proper user desktop path
 #desktop_path = os.path.expanduser("~/Desktop")
